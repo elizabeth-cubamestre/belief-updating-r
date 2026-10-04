@@ -23,14 +23,11 @@ The analysis uses:
 
 - Bayesian updating
 - Probability distributions
-- Monte Carlo simulation
 - Data manipulation with `dplyr`
 - Data visualization with `ggplot2`
 - Bootstrap confidence intervals
 - Hypothesis testing
 - Simple linear regression
-
-All simulated data were generated in R. No human-subject data were used.
 
 ## Key Skills Demonstrated
 
@@ -41,7 +38,3 @@ All simulated data were generated in R. No human-subject data were used.
 **Data Science:** `dplyr`, `ggplot2`, reproducible analysis, data visualization
 
 **Tools:** Quarto, RStudio, Git/GitHub
-
-## Important Note
-
-This project is an educational simulation of Bayesian belief updating. It is not intended to model clinical disorders, hallucinations, paranoia, or actual neural computation. The simplified framework is useful for exploring how mathematical assumptions about prior beliefs and evidence can influence updating behavior.
