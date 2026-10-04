@@ -1,0 +1,469 @@
+---
+title: "Belief Updating Under Uncertainty"
+subtitle: "A Simulation Study in R"
+author: "Elizabeth Cuba Mestre"
+format:
+  html:
+    toc: true
+    code-fold: true
+    embed-resources: true
+execute:
+  warning: false
+  message: false
+---
+
+## 1. Motivation
+
+How should a person update a belief when they receive new evidence?
+
+We rarely approach new information with no expectations. Instead, we begin with assumptions formed from previous experiences and update those beliefs as we encounter new evidence.
+
+This project uses a simplified Bayesian framework to explore how three factors influence belief updating:
+
+1. The strength of an individual's prior belief
+2. The reliability of new evidence
+3. The amount of evidence available
+
+The goal is not to model human cognition or clinical disorders directly. Instead, this is a statistical simulation designed to explore how assumptions about prior beliefs and evidence can produce different patterns of belief updating.
+
+```{r}
+#| label: setup
+#| include: false
+
+library(tidyverse)
+library(scales)
+
+set.seed(2200)
+
+theme_set(
+  theme_minimal(base_size = 12)
+)
+```
+
+## 2. A Simple Bayesian Model
+
+Suppose we are trying to determine whether a hypothesis $H$ is true.
+
+We begin with a prior probability:
+
+$$
+P(H)
+$$
+
+We then observe evidence $E$ and update our belief using Bayes' rule:
+
+$$
+P(H|E) =
+\frac{P(E|H)P(H)}
+{P(E|H)P(H) + P(E|\neg H)P(\neg H)}
+$$
+
+For this simulation, we will interpret the posterior probability as our updated belief after observing evidence.
+
+To make the simulation concrete, suppose an event has a 70% probability if the hypothesis is correct and a 30% probability if the hypothesis is incorrect.
+
+```{r}
+bayes_update <- function(prior, p_e_given_h, p_e_given_not_h) {
+  
+  posterior <- 
+    (p_e_given_h * prior) /
+    ((p_e_given_h * prior) +
+       (p_e_given_not_h * (1 - prior)))
+  
+  return(posterior)
+}
+
+bayes_update(
+  prior = 0.50,
+  p_e_given_h = 0.70,
+  p_e_given_not_h = 0.30
+)
+```
+
+With a neutral 50% prior, observing positive evidence increases the posterior probability of the hypothesis.
+
+## 3. Prior Beliefs and Belief Updating
+
+First, we can examine what happens when two people receive exactly the same evidence but begin with different prior beliefs.
+
+```{r}
+priors <- seq(0.05, 0.95, by = 0.05)
+
+prior_results <- tibble(
+  prior = priors,
+  posterior = bayes_update(
+    prior = priors,
+    p_e_given_h = 0.70,
+    p_e_given_not_h = 0.30
+  )
+)
+
+prior_results
+```
+
+```{r}
+ggplot(prior_results, aes(x = prior, y = posterior)) +
+  geom_line(linewidth = 1.1, color = "#2C7FB8") +
+  geom_point(size = 2, color = "#2C7FB8") +
+  geom_abline(
+    slope = 1,
+    intercept = 0,
+    linetype = "dashed",
+    color = "gray50"
+  ) +
+  scale_x_continuous(labels = scales::percent) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title = "The Same Evidence Can Produce Different Posterior Beliefs",
+    subtitle = "Evidence: P(E|H) = 0.70 and P(E|not H) = 0.30",
+    x = "Prior Belief",
+    y = "Posterior Belief"
+  )
+```
+
+The simulation illustrates an important property of Bayesian updating where the same evidence does not necessarily lead to the same posterior belief when starting beliefs differ.
+
+This does not mean that prior beliefs are always "correct" or "incorrect." Rather, the mathematical framework makes explicit how previous information enters the updating process.
+
+## 4. Evidence Reliability
+
+The amount of updating should also depend on how informative the evidence is.
+
+* Weak evidence
+* Moderate evidence
+* Strong evidence
+
+```{r}
+evidence_conditions <- tribble(
+  ~condition, ~p_e_given_h, ~p_e_given_not_h,
+  "Weak",      0.55,          0.45,
+  "Moderate",  0.70,          0.30,
+  "Strong",    0.90,          0.10
+)
+
+evidence_results <- crossing(
+  prior = priors,
+  evidence_conditions
+) %>%
+  mutate(
+    posterior = bayes_update(
+      prior,
+      p_e_given_h,
+      p_e_given_not_h
+    ),
+    absolute_update = abs(posterior - prior)
+  )
+
+evidence_results
+```
+
+```{r}
+ggplot(
+  evidence_results,
+  aes(
+    x = prior,
+    y = posterior,
+    color = condition
+  )
+) +
+  geom_line(linewidth = 1) +
+  scale_x_continuous(labels = scales::percent) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title = "Evidence Reliability Changes the Amount of Updating",
+    x = "Prior Belief",
+    y = "Posterior Belief",
+    color = "Evidence"
+  )
+```
+
+The model predicts that stronger evidence produces larger changes in belief, particularly when the prior belief is not already close to the evidence-supported conclusion.
+
+## 5. Simulating Repeated Evidence
+
+A single piece of evidence is not the only way beliefs can change.
+
+Suppose evidence is observed repeatedly. We can simulate repeated observations and update the posterior after every observation.
+
+```{r}
+simulate_updates <- function(
+    prior,
+    p_e_given_h,
+    p_e_given_not_h,
+    n_observations = 50
+) {
+  
+  observations <- rbinom(
+    n_observations,
+    size = 1,
+    prob = p_e_given_h
+  )
+  
+  posterior <- numeric(n_observations)
+  
+  current_prior <- prior
+  
+  for (i in seq_len(n_observations)) {
+    
+    if (observations[i] == 1) {
+      
+      current_prior <- bayes_update(
+        current_prior,
+        p_e_given_h,
+        p_e_given_not_h
+      )
+      
+    } else {
+      
+      current_prior <- bayes_update(
+        current_prior,
+        1 - p_e_given_h,
+        1 - p_e_given_not_h
+      )
+    }
+    
+    posterior[i] <- current_prior
+  }
+  
+  tibble(
+    observation = seq_len(n_observations),
+    evidence = observations,
+    posterior = posterior
+  )
+}
+
+simulation <- simulate_updates(
+  prior = 0.20,
+  p_e_given_h = 0.70,
+  p_e_given_not_h = 0.30,
+  n_observations = 50
+)
+
+head(simulation)
+```
+
+```{r}
+ggplot(
+  simulation,
+  aes(x = observation, y = posterior)
+) +
+  geom_line(
+    linewidth = 1,
+    color = "#2C7FB8"
+  ) +
+  geom_hline(
+    yintercept = 0.5,
+    linetype = "dashed",
+    color = "gray50"
+  ) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title = "Belief Updating Across Repeated Observations",
+    x = "Observation",
+    y = "Posterior Belief"
+  )
+```
+
+Because the evidence is probabilistic, individual simulations can produce different paths.
+
+## 6. A Simulated Behavioral Dataset
+
+The previous sections treated prior belief and evidence reliability as mathematical parameters.
+
+We can also create a simulated dataset representing individual participants.
+
+Each simulated participant will receive a different prior belief and different evidence reliability. We will then measure the amount of belief updating.
+
+```{r}
+set.seed(2200)
+
+n_participants <- 500
+
+participants <- tibble(
+  participant = 1:n_participants,
+  prior_strength = runif(
+    n_participants,
+    min = 0.05,
+    max = 0.95
+  ),
+  evidence_reliability = runif(
+    n_participants,
+    min = 0.50,
+    max = 0.95
+  )
+) %>%
+  mutate(
+    p_e_given_h = evidence_reliability,
+    p_e_given_not_h = 1 - evidence_reliability,
+    posterior = bayes_update(
+      prior_strength,
+      p_e_given_h,
+      p_e_given_not_h
+    ),
+    belief_update = posterior - prior_strength,
+    absolute_update = abs(belief_update)
+  )
+
+head(participants)
+```
+
+## 8. Visualizing Simulated Participants
+
+```{r}
+ggplot(
+  participants,
+  aes(
+    x = prior_strength,
+    y = absolute_update,
+    color = evidence_reliability
+  )
+) +
+  geom_point(alpha = 0.5) +
+  scale_x_continuous(labels = scales::percent) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_color_viridis_c(
+    labels = scales::percent
+  ) +
+  labs(
+    title = "Simulated Belief Updating Across Participants",
+    x = "Prior Belief",
+    y = "Absolute Belief Update",
+    color = "Evidence Reliability"
+  )
+```
+
+The visualization suggests that belief updating depends jointly on starting beliefs and the strength of the evidence.
+
+## 9. Regression Analysis
+
+```{r}
+model <- lm(
+  absolute_update ~ prior_strength + evidence_reliability,
+  data = participants
+)
+
+summary(model)
+```
+
+The regression provides a simple way to examine whether prior strength and evidence reliability are associated with the magnitude of simulated belief updating.
+
+```{r}
+broom::tidy(model)
+```
+
+```{r}
+ggplot(
+  participants,
+  aes(
+    x = evidence_reliability,
+    y = absolute_update
+  )
+) +
+  geom_point(alpha = 0.35) +
+  geom_smooth(
+    method = "lm",
+    se = TRUE,
+    color = "#D95F02"
+  ) +
+  scale_x_continuous(labels = scales::percent) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title = "Relationship Between Evidence Reliability and Belief Updating",
+    x = "Evidence Reliability",
+    y = "Absolute Belief Update"
+  )
+```
+
+## 10. Bootstrap Confidence Interval
+
+```{r}
+set.seed(2200)
+
+bootstrap_means <- map_dbl(
+  seq_len(5000),
+  function(i) {
+    
+    sample_data <- participants %>%
+      slice_sample(
+        n = nrow(participants),
+        replace = TRUE
+      )
+    
+    mean(sample_data$absolute_update)
+  }
+)
+
+bootstrap_ci <- quantile(
+  bootstrap_means,
+  probs = c(0.025, 0.975)
+)
+
+bootstrap_ci
+```
+
+```{r}
+ggplot(
+  tibble(mean_update = bootstrap_means),
+  aes(x = mean_update)
+) +
+  geom_histogram(
+    bins = 40,
+    fill = "#7570B3",
+    color = "white"
+  ) +
+  geom_vline(
+    xintercept = bootstrap_ci,
+    color = "#D95F02",
+    linetype = "dashed"
+  ) +
+  scale_x_continuous(labels = scales::percent) +
+  labs(
+    title = "Bootstrap Distribution of Mean Belief Updating",
+    x = "Mean Absolute Belief Update",
+    y = "Number of Bootstrap Samples"
+  )
+```
+
+The bootstrap distribution provides a representation of the uncertainty surrounding the estimated mean absolute belief update.
+
+## 11. Interpreting the Results
+
+The simulation demonstrates several general patterns.
+
+First, prior beliefs influence posterior beliefs. When the same evidence is presented to individuals with different starting beliefs, the resulting posterior beliefs can differ.
+
+Furthermore, evidence reliability affects the amount of updating. More informative evidence generally produces larger changes in belief.
+
+Thus, the simulated participant analysis demonstrates how statistical tools such as regression and bootstrap resampling can be used to quantify relationships and uncertainty in simulated behavioral data.
+
+## 12. What I Learned
+
+This simulation reinforced several concepts from probability and statistics:
+
+* Prior assumptions can influence how new evidence changes a posterior belief.
+* The informativeness of evidence affects the magnitude of updating.
+* Repeated stochastic observations can produce different individual trajectories.
+* Regression can quantify relationships between simulated behavioral variables.
+* Bootstrap methods can estimate uncertainty without relying entirely on parametric assumptions.
+
+
+## 13. Limitations and Future Directions
+
+This project intentionally uses a highly simplified Bayesian framework.
+
+Thus it does not model individual differences in cognition or any actual patient behavior
+
+A natural next step would be to introduce more realistic simulated behavioral data and compare alternative computational models of belief updating.
+
+## 14. Conclusion
+
+This project began as an exploration of probability and Bayesian updating but became a useful way for me to think about how mathematical models can represent aspects of human belief formation.
+
+The most interesting part was not obtaining a single answer, but seeing how different assumptions about prior beliefs and evidence can produce different outcomes.
+
+
+
+
+
+
+
